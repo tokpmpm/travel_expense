@@ -1273,14 +1273,22 @@
         // --- 雲端同步邏輯 (Supabase) ---
         var SUPABASE_URL = 'https://xmkhqqzieelwyrlxmpol.supabase.co';
         var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhta2hxcXppZWVsd3lybHhtcG9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0ODM2NzIsImV4cCI6MjA4MjA1OTY3Mn0.sZ4bxFhpZSylYTXQ69WGl85P_Ly8pt-v0bfeSBNRpJA';
-        var supabase = null;
         var SYNC_ROOM_ID = '';
         var realtimeChannel = null;
 
-        function initSupabase() {
-            if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
-                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-            }
+        // Initialize Supabase client immediately
+        var supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+        // Retry initialization if SDK wasn't ready
+        if (!supabase) {
+            setTimeout(function () {
+                if (window.supabase && !supabase) {
+                    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    console.log('Supabase initialized (delayed)');
+                }
+            }, 1000);
+        } else {
+            console.log('Supabase initialized immediately');
         }
 
         function getRoomFromURL() {
@@ -1503,7 +1511,6 @@
 
         // Auto-check for room on load
         window.addEventListener('load', function () {
-            initSupabase();
             var room = getRoomFromURL();
             if (room) {
                 SYNC_ROOM_ID = room;
