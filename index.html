@@ -1258,6 +1258,9 @@
             cloudSave(true);
         }
 
+        // Debounce timer for cloud sync
+        var cloudSyncTimer = null;
+
         function updateTotal() {
             var resultInputs = document.querySelectorAll('.twd-result');
             var grandTotal = 0;
@@ -1270,6 +1273,14 @@
             // Only save to localStorage automatically
             if (!isLoading) {
                 saveData(false);
+
+                // Auto-sync to cloud with debounce (2 second delay)
+                if (SYNC_ROOM_ID) {
+                    if (cloudSyncTimer) clearTimeout(cloudSyncTimer);
+                    cloudSyncTimer = setTimeout(function () {
+                        cloudSave(false);
+                    }, 2000);
+                }
             }
             updateCharts();
         }
