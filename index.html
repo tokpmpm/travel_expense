@@ -1489,7 +1489,12 @@
                     var localMod = parseInt(localRow.dataset.modified) || 0;
                     var remoteMod = remoteExp.lastModified || 0;
                     var isDirty = localRow.querySelector('.btn-save.dirty') !== null;
-                    if (remoteMod > localMod && !isDirty) {
+
+                    // Check if user is actively editing this row (has focus)
+                    var hasFocus = localRow.querySelector('input:focus, select:focus') !== null;
+
+                    // Only update if remote is newer, not dirty, and user is not actively editing
+                    if (remoteMod > localMod && !isDirty && !hasFocus) {
                         updateRowContent(localRow, remoteExp);
                     }
                 }
