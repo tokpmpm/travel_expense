@@ -193,6 +193,38 @@
             background: #f0f0f0;
         }
 
+        .btn-save {
+            background: #e8f5e9;
+            border: 1px solid #c8e6c9;
+            color: #2e7d32;
+            font-weight: bold;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 5px 10px;
+            border-radius: 4px;
+            display: none;
+            margin-right: 5px;
+        }
+
+        .btn-save.dirty {
+            display: inline-block;
+            animation: pulse-green 1.5s infinite;
+        }
+
+        @keyframes pulse-green {
+            0% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4);
+            }
+
+            70% {
+                box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+            }
+        }
+
         .room-id-display {
             font-family: monospace;
             background: rgba(255, 255, 255, 0.2);
@@ -804,7 +836,7 @@
                             <th style="width: 90px;">幣別</th>
                             <th style="min-width: 150px;">備註</th>
                             <th style="width: 120px;">台幣總額</th>
-                            <th style="width: 60px;">刪除</th>
+                            <th style="width: 100px;">儲存/刪除</th>
                         </tr>
                     </thead>
                     <tbody id="table-body">
@@ -1145,7 +1177,8 @@
                 '</td>' +
                 '<td data-label="備註"><input type="text" class="sheet-input note-input" value="' + noteVal + '" placeholder="備註..." oninput="markModified(this); recalculateAll()"></td>' +
                 '<td data-label="台幣總額"><input type="text" class="sheet-input twd-result" readonly value="0"></td>' +
-                '<td data-label="操作" style="text-align:center;">' +
+                '<td data-label="操作" style="text-align:center; min-width: 100px;">' +
+                '<button class="btn-save" onclick="manualSync(this)">✓</button>' +
                 '<button class="btn-delete" onclick="deleteRow(this)"></button>' +
                 '</td>';
 
@@ -1203,6 +1236,23 @@
             updateTotal();
         }
 
+        function markModified(element) {
+            var row = element.closest('tr');
+            if (row) {
+                row.dataset.modified = Date.now();
+                var saveBtn = row.querySelector('.btn-save');
+                if (saveBtn) saveBtn.classList.add('dirty');
+            }
+        }
+
+        function manualSync(btn) {
+            if (!SYNC_ROOM_ID) {
+                alert('請先點擊上方的「開啟雲端同步」並選擇房號！');
+                return;
+            }
+            cloudSave(true);
+        }
+
         function updateTotal() {
             var resultInputs = document.querySelectorAll('.twd-result');
             var grandTotal = 0;
@@ -1212,10 +1262,9 @@
 
             document.getElementById('grand-total').textContent = '總花費: NT$' + grandTotal.toLocaleString();
 
-            // Only save if NOT loading
+            // Only save to localStorage automatically
             if (!isLoading) {
                 saveData(false);
-                cloudSave(); // 觸發雲端儲存
             }
             updateCharts();
         }
@@ -1241,10 +1290,24 @@
             }
         }
 
-        function markModified(element) {
-            var row = element.closest('tr');
-            if (row) {
-                row.dataset.modified = Date.now();
+        // --- 雲端同步邏輯 (KVDB.io) ---
+        var SYNC_ROOM_ID = '';
+        var KVDB_PREFIX = 'https://kvdb.io/C59XzUqgXy9LidFm7QyUHz/'; // 公共 Bucket
+
+        function getRoomFromURL() {
+            var params = new URLSearchParams(window.location.search);
+            return params.get('room');
+        }
+
+        function enableSync() {
+            if (SYNC_ROOM_ID) return;
+            var room = prompt("請輸入同步房號 (例如: MyTrip2025):", "Trip" + Math.floor(Math.random() * 9000 + 1000));
+            if (room) {
+                SYNC_ROOM_ID = room;
+                var newUrl = window.location.origin + window.location.pathname + '?room=' + encodeURIComponent(SYNC_ROOM_ID);
+                window.history.replaceState({ path: newUrl }, '', newUrl);
+                initSyncUI();
+                cloudSave();
             }
         }
 
@@ -1264,52 +1327,81 @@
             });
         }
 
-        function cloudSave() {
+        function cloudSave(isManual) {
             if (!SYNC_ROOM_ID || isLoading) return;
 
             var syncDot = document.getElementById('sync-dot');
             syncDot.classList.add('syncing');
 
+            // --- Read-Modify-Write System ---
+            // 1. Fetch current cloud data first
+            fetch(KVDB_PREFIX + SYNC_ROOM_ID)
+                .then(function (res) { return res.ok ? res.json() : { expenses: [] }; })
+                .then(function (remoteData) {
+                    // 2. Merge local into remote
+                    var mergedData = mergeForPush(remoteData);
+
+                    // 3. Push merged back to cloud
+                    return fetch(KVDB_PREFIX + SYNC_ROOM_ID, {
+                        method: 'POST',
+                        body: JSON.stringify(mergedData)
+                    });
+                })
+                .then(function () {
+                    setTimeout(function () { syncDot.classList.remove('syncing'); }, 500);
+                    // Clear all dirty states
+                    document.querySelectorAll('.btn-save.dirty').forEach(function (b) { b.classList.remove('dirty'); });
+                    if (isManual) alert('✅ 雲端同步成功！數據已安全合併。');
+                })
+                .catch(function (err) {
+                    console.error('Cloud save failed:', err);
+                    syncDot.classList.remove('syncing');
+                    if (isManual) alert('❌ 同步失敗，請檢查網路連線。');
+                });
+        }
+
+        function mergeForPush(remoteData) {
             var rates = {
                 nzd: document.getElementById('rate-nzd').value,
                 usd: document.getElementById('rate-usd').value,
                 hkd: document.getElementById('rate-hkd').value
             };
 
-            var rows = document.querySelectorAll('#table-body tr');
-            var expenses = [];
-            rows.forEach(function (row) {
+            var localRows = document.querySelectorAll('#table-body tr');
+            var localExpenses = [];
+            localRows.forEach(function (row) {
                 var d = row.querySelector('.date-input');
-                var s = row.querySelector('.payer-select');
-                var c = row.querySelector('.category-select');
                 var a = row.querySelector('.amount-input');
-                var cr = row.querySelector('.currency-select');
-                var n = row.querySelector('.note-input');
                 if (d || a) {
-                    expenses.push({
+                    localExpenses.push({
                         id: row.dataset.id,
                         date: d ? d.value : '',
-                        source: s ? s.value : '',
-                        category: c ? c.value : '',
+                        source: row.querySelector('.payer-select').value,
+                        category: row.querySelector('.category-select').value,
                         amount: a ? a.value : '',
-                        currency: cr ? cr.value : '',
-                        note: n ? n.value : '',
-                        lastModified: row.dataset.modified || Date.now()
+                        currency: row.querySelector('.currency-select').value,
+                        note: row.querySelector('.note-input').value,
+                        lastModified: parseInt(row.dataset.modified) || Date.now()
                     });
                 }
             });
 
-            var payload = JSON.stringify({ rates: rates, expenses: expenses, timestamp: Date.now() });
+            var remoteExpenses = remoteData.expenses || [];
+            var finalExpenses = [].concat(remoteExpenses);
 
-            fetch(KVDB_PREFIX + SYNC_ROOM_ID, {
-                method: 'POST',
-                body: payload
-            }).then(function () {
-                setTimeout(function () { syncDot.classList.remove('syncing'); }, 500);
-            }).catch(function (err) {
-                console.error('Cloud save failed:', err);
-                syncDot.classList.remove('syncing');
+            localExpenses.forEach(function (local) {
+                var idx = finalExpenses.findIndex(function (r) { return r.id === local.id; });
+                if (idx === -1) {
+                    finalExpenses.push(local);
+                } else {
+                    // Only update if local is newer than what we just fetched
+                    if (local.lastModified > (finalExpenses[idx].lastModified || 0)) {
+                        finalExpenses[idx] = local;
+                    }
+                }
             });
+
+            return { rates: rates, expenses: finalExpenses, timestamp: Date.now() };
         }
 
         function cloudLoad(isManual) {
@@ -1326,7 +1418,7 @@
                 .then(function (data) {
                     if (data && data.expenses) {
                         applyCloudData(data);
-                        if (isManual) alert('✅ 雲端資料更新完成！');
+                        if (isManual) alert('✅ 已從雲端更新最新數據。');
                     }
                     syncDot.classList.remove('syncing');
                     var now = new Date();
@@ -1347,30 +1439,24 @@
                 if (data.rates.hkd) document.getElementById('rate-hkd').value = data.rates.hkd;
             }
 
-            // 讀取本地目前的資料以供合併
-            var rows = document.querySelectorAll('#table-body tr');
+            var localRows = document.querySelectorAll('#table-body tr');
             var localMap = {};
-            rows.forEach(function (row) {
-                if (row.dataset.id) {
-                    localMap[row.dataset.id] = row;
-                }
+            localRows.forEach(function (row) {
+                if (row.dataset.id) localMap[row.dataset.id] = row;
             });
 
             var remoteExpenses = data.expenses || [];
 
-            // 合併策略：
             remoteExpenses.forEach(function (remoteExp) {
                 var localRow = localMap[remoteExp.id];
                 if (!localRow) {
-                    // 本地沒有，新增一列
                     createRow(remoteExp, false);
                 } else {
-                    // 兩邊都有，檢查時間戳
-                    var remoteMod = remoteExp.lastModified || 0;
                     var localMod = parseInt(localRow.dataset.modified) || 0;
-
-                    if (remoteMod > localMod) {
-                        // 遠端比較新，更新本地這一列
+                    var remoteMod = remoteExp.lastModified || 0;
+                    // Only overwrite if remote is strictly newer and local is NOT dirty
+                    var isDirty = localRow.querySelector('.btn-save.dirty') !== null;
+                    if (remoteMod > localMod && !isDirty) {
                         updateRowContent(localRow, remoteExp);
                     }
                 }
@@ -1379,7 +1465,7 @@
             isLoading = false;
             saveData(false);
             updateCharts();
-            recalculateAll(); // 確保總額正確
+            recalculateAll(); // Ensure total display is correct
         }
 
         function updateRowContent(row, data) {
@@ -1401,6 +1487,8 @@
             if (n) n.value = data.note || '';
 
             row.dataset.modified = data.lastModified || Date.now();
+            var saveBtn = row.querySelector('.btn-save');
+            if (saveBtn) saveBtn.classList.remove('dirty');
         }
 
         // Auto-check for room on load
