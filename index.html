@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>旅遊記帳 Travel Expense Tracker</title>
+
+    <style>
+        :root {
+            --header-bg: #1f4e78;
+            --header-text: #ffffff;
+            --card-bg: #ffffff;
+            --card-border: #e0e0e0;
+            --primary-btn: #2b7da3;
+            --delete-btn: #d9534f;
+            --save-btn: #28a745;
+            --label-color: #666;
+
+            /* Category Colors */
+            --cat-flight: #4a86e8;
+            --cat-stay: #9900ff;
+            --cat-transport: #6aa84f;
+            --cat-food: #e69138;
+            --cat-activity: #00bcd4;
+            --cat-insurance: #595959;
+            --cat-shop: #783f04;
+            --cat-other: #b7b7b7;
+            --cat-tip: #ea9999;
+
+            /* Payer Colors */
+            --payer-w: #2b7da3;
+            --payer-s: #e05d5d;
+            --payer-richart: #f5c542;
+            --payer-default: #999;
+        }
+
+        * {
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 10px;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+
+        /* --- Layout Structure --- */
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            background: transparent;
+            display: flex;
+            flex-direction: column;
+            min-height: 90vh;
+        }
+
+        /* --- Header Section --- */
+        header {
+            background-color: var(--header-bg);
+            color: var(--header-text);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .summary-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .total-display {
+            font-size: 1.6rem;
+            font-weight: bold;
+            color: #ffd700;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 10px;
+            border-radius: 6px;
+            width: 100%;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn-toggle-chart {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            display: block;
+        }
+
+        .btn-toggle-chart:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Rates Grid */
+        .rates-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .rate-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 5px;
+            border-radius: 4px;
+        }
+
+        .rate-group label {
+            font-size: 0.7rem;
+            margin-bottom: 4px;
+            opacity: 0.9;
+        }
+
+        .rate-group input {
+            width: 100%;
+            padding: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            font-weight: bold;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+
+        /* --- Chart Section --- */
+        #chart-section {
+            display: none;
+            background: white;
+            margin-bottom: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        #chart-section.show {
+            display: block;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .charts-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+        }
+
+        .chart-block {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .chart-title {
+            font-weight: bold;
+            font-size: 1.1rem;
+            color: #444;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .pie-chart {
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            background: conic-gradient(#eee 0% 100%);
+            position: relative;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .pie-chart::after {
+            content: "";
+            position: absolute;
+            width: 90px;
+            height: 90px;
+            background: white;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .chart-legend {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 8px;
+            width: 100%;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            font-size: 0.85rem;
+            color: #555;
+            padding: 4px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            flex-shrink: 0;
+        }
+
+        /* --- Modal Styles --- */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(2px);
+        }
+
+        .modal-overlay.show {
+            display: flex;
+            animation: fadeIn 0.2s;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        .modal-content {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 350px;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-content h3 {
+            margin-top: 0;
+            color: #333;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 25px;
+        }
+
+        .btn-modal-cancel {
+            padding: 10px 20px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            color: #555;
+        }
+
+        .btn-modal-delete {
+            padding: 10px 20px;
+            background: var(--delete-btn);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+
+        /* --- Table Section --- */
+        .table-section {
+            width: 100%;
+        }
+
+        .btn-add {
+            width: 100%;
+            padding: 15px;
+            background-color: var(--primary-btn);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-add:active {
+            transform: scale(0.98);
+        }
+
+        table,
+        thead,
+        tbody,
+        th,
+        td,
+        tr {
+            display: block;
+        }
+
+        thead {
+            display: none;
+        }
+
+        tr {
+            background: #fff;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--card-border);
+            padding: 10px 15px;
+            position: relative;
+        }
+
+        td {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+            min-height: 45px;
+        }
+
+        td:last-child {
+            border-bottom: none;
+            justify-content: flex-end;
+        }
+
+        td::before {
+            content: attr(data-label);
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--label-color);
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+
+        .sheet-input {
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 8px;
+            background: #fff;
+            font-size: 1rem;
+            outline: none;
+            text-align: right;
+            width: 100%;
+            max-width: 65%;
+        }
+
+        .sheet-input:focus {
+            border-color: #2b7da3;
+            background-color: #f8fbff;
+        }
+
+        select.sheet-input {
+            background-color: #fff;
+        }
+
+        .twd-result {
+            background-color: #f1f3f4;
+            color: #333;
+            border: none;
+            font-weight: bold;
+        }
+
+        .category-cell-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            width: 65%;
+        }
+
+        .category-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            flex-shrink: 0;
+        }
+
+        .category-select {
+            width: 100%;
+        }
+
+        .btn-delete {
+            background: #ffebee;
+            border: 1px solid #ffcdd2;
+            color: var(--delete-btn);
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            padding: 8px 15px;
+            border-radius: 4px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .btn-delete::after {
+            content: "刪除 Delete";
+            font-size: 0.9rem;
+        }
+
+        /* --- Desktop View --- */
+        @media (min-width: 768px) {
+            body {
+                padding: 20px;
+            }
+
+            .container {
+                background: white;
+                padding-bottom: 20px;
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+                border-radius: 8px;
+            }
+
+            header {
+                flex-direction: row;
+                justify-content: space-between;
+                align-items: center;
+                border-radius: 8px 8px 0 0;
+                margin-bottom: 0;
+            }
+
+            h1 {
+                text-align: left;
+                font-size: 1.8rem;
+            }
+
+            .summary-panel {
+                flex-direction: row;
+                align-items: center;
+                gap: 30px;
+            }
+
+            .total-display {
+                font-size: 1.5rem;
+                background: transparent;
+                padding: 0;
+                width: auto;
+            }
+
+            .rates-container {
+                display: flex;
+                gap: 15px;
+                width: auto;
+            }
+
+            .rate-group,
+            .rate-group input {
+                background: transparent;
+                border: none;
+                color: white;
+            }
+
+            .rate-group input {
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                background: rgba(255, 255, 255, 0.2);
+                width: 80px;
+            }
+
+            .charts-wrapper {
+                flex-direction: row;
+                gap: 20px;
+            }
+
+            .table-section {
+                padding: 20px;
+            }
+
+            .btn-add {
+                width: auto;
+                margin: 0 0 15px 0;
+                display: inline-flex;
+            }
+
+            table {
+                display: table;
+                border-collapse: collapse;
+                width: 100%;
+            }
+
+            thead {
+                display: table-header-group;
+            }
+
+            tbody {
+                display: table-row-group;
+            }
+
+            tr {
+                display: table-row;
+                box-shadow: none;
+                border: none;
+                border-bottom: 1px solid var(--card-border);
+                margin: 0;
+                padding: 0;
+                border-radius: 0;
+            }
+
+            tr:nth-child(even) {
+                background-color: #eef5fa;
+            }
+
+            th {
+                display: table-cell;
+                background-color: #f1f3f4;
+                color: #444;
+                font-weight: 600;
+                text-align: left;
+                padding: 12px 10px;
+                border: 1px solid #d0d0d0;
+                white-space: nowrap;
+            }
+
+            td {
+                display: table-cell;
+                border: 1px solid #d0d0d0;
+                padding: 0;
+                text-align: left;
+                height: auto;
+                min-height: auto;
+            }
+
+            td::before {
+                display: none;
+            }
+
+            td:last-child {
+                border-bottom: 1px solid #d0d0d0;
+            }
+
+            .sheet-input {
+                border: none;
+                background: transparent;
+                text-align: left;
+                max-width: none;
+                border-radius: 0;
+                width: 100%;
+                height: 100%;
+                padding: 10px;
+            }
+
+            .twd-result {
+                background-color: #f9f9f9;
+                text-align: right;
+            }
+
+            .category-cell-wrapper {
+                width: 100%;
+                justify-content: flex-start;
+                padding-left: 5px;
+            }
+
+            .btn-delete {
+                background: transparent;
+                border: none;
+                color: #999;
+                width: 100%;
+                font-size: 1.2rem;
+            }
+
+            .btn-delete:hover {
+                color: var(--delete-btn);
+                background-color: #fff0f0;
+            }
+
+            .btn-delete::after {
+                content: "×";
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <h1>旅遊記帳</h1>
+            <div class="summary-panel">
+                <div class="total-display" id="grand-total">總花費: NT$0</div>
+
+                <div class="header-actions">
+                    <button class="btn-toggle-chart" onclick="toggleChart()">📊 顯示/隱藏 統計圖表</button>
+                    <!-- Button Removed -->
+                </div>
+
+                <div class="rates-container">
+                    <div class="rate-group">
+                        <label>NZD</label>
+                        <input type="number" id="rate-nzd" value="18.5" step="0.1">
+                    </div>
+                    <div class="rate-group">
+                        <label>USD</label>
+                        <input type="number" id="rate-usd" value="31.6" step="0.1">
+                    </div>
+                    <div class="rate-group">
+                        <label>HKD</label>
+                        <input type="number" id="rate-hkd" value="4.06" step="0.01">
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Chart Section -->
+        <div id="chart-section">
+            <div class="charts-wrapper">
+
+                <!-- Category Chart -->
+                <div class="chart-block">
+                    <div class="chart-title">類別花費佔比</div>
+                    <div class="pie-chart" id="pie-chart-cat"></div>
+                    <div class="chart-legend" id="legend-cat"></div>
+                </div>
+
+                <!-- Payer Chart -->
+                <div class="chart-block">
+                    <div class="chart-title">付款人統計</div>
+                    <div class="pie-chart" id="pie-chart-payer"></div>
+                    <div class="chart-legend" id="legend-payer"></div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Main Layout -->
+        <div class="main-content">
+            <section class="table-section">
+                <button class="btn-add" onclick="addNewRow()"><span>+</span> 新增一筆支出 (最新在最上)</button>
+
+                <table id="expense-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 140px;">日期</th>
+                            <th style="width: 100px;">付款人</th>
+                            <th style="width: 160px;">類別</th>
+                            <th style="width: 110px;">金額</th>
+                            <th style="width: 90px;">幣別</th>
+                            <th style="min-width: 150px;">備註</th>
+                            <th style="width: 120px;">台幣總額</th>
+                            <th style="width: 60px;">刪除</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <!-- Rows will be injected by JS -->
+                    </tbody>
+                </table>
+            </section>
+        </div>
+    </div>
+
+    <!-- Custom Delete Modal -->
+    <div id="delete-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h3>確認刪除</h3>
+            <p>確定要刪除這筆支出嗎？<br><span style="font-size: 0.9em; color: #666;">(此動作無法復原)</span></p>
+            <div class="modal-actions">
+                <button class="btn-modal-cancel" onclick="closeDeleteModal()">取消</button>
+                <button class="btn-modal-delete" onclick="confirmDeleteRow()">確認刪除</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        var categories = [
+            { id: 'flight', name: '機票', color: 'var(--cat-flight)' },
+            { id: 'stay', name: '住宿', color: 'var(--cat-stay)' },
+            { id: 'transport', name: '交通/租車', color: 'var(--cat-transport)' },
+            { id: 'food', name: '餐飲/雜貨', color: 'var(--cat-food)' },
+            { id: 'activity', name: '活動/娛樂', color: 'var(--cat-activity)' },
+            { id: 'insurance', name: '保險/簽證', color: 'var(--cat-insurance)' },
+            { id: 'shop', name: '購物/裝備', color: 'var(--cat-shop)' },
+            { id: 'other', name: '其他', color: 'var(--cat-other)' },
+            { id: 'tip', name: '小費', color: 'var(--cat-tip)' }
+        ];
+
+        var payers = [
+            { id: 'W', color: 'var(--payer-w)' },
+            { id: 'S', color: 'var(--payer-s)' },
+            { id: 'Richart', color: 'var(--payer-richart)' }
+        ];
+
+        var currencies = ['TWD', 'USD', 'NZD', 'HKD'];
+        var sources = payers.map(function (p) { return p.id; });
+
+        var initialData = [
+            { date: '2025-12-25', source: 'W', category: 'flight', amount: 61000, currency: 'TWD', note: 'flight to NZ' },
+            { date: '2025-12-27', source: 'W', category: 'activity', amount: 5000, currency: 'USD', note: 'local tour' },
+            { date: '2025-12-25', source: 'W', category: 'insurance', amount: 234, currency: 'NZD', note: 'VISA' },
+            { date: '2025-12-25', source: 'W', category: 'insurance', amount: 1136, currency: 'TWD', note: 'INSURANCE' },
+            { date: '2025-12-25', source: 'W', category: 'insurance', amount: 62, currency: 'USD', note: 'INSURANCE' },
+            { date: '2025-12-25', source: 'W', category: 'flight', amount: 118, currency: 'USD', note: 'flight NZ to TPE tax' },
+            { date: '2025-12-26', source: 'W', category: 'stay', amount: 3265, currency: 'TWD', note: 'sudima CHC airport' },
+            { date: '2025-01-03', source: 'W', category: 'stay', amount: 300, currency: 'NZD', note: 'CHC hotels 1/3-1/5' }
+        ];
+
+        // --- Init ---
+        // Using v7 key to ensure clean slate with robust logic
+        var STORAGE_KEY_RATES = 'travel_rates_v7';
+        var STORAGE_KEY_EXPENSES = 'travel_expenses_v7';
+        var isLoading = false; // Flag to prevent saving while loading
+
+        document.addEventListener('DOMContentLoaded', function () {
+            loadData();
+            var rateInputs = document.querySelectorAll('.rate-group input');
+            rateInputs.forEach(function (input) {
+                input.addEventListener('input', recalculateAll);
+            });
+            updateCharts();
+        });
+
+        // --- Manual Save Function ---
+        // function manualSave() {
+        //    saveData(true);
+        // }
+
+        // --- Modal Logic ---
+        var rowToDelete = null;
+        function deleteRow(btn) {
+            rowToDelete = btn.closest('tr');
+            document.getElementById('delete-modal').classList.add('show');
+        }
+        function closeDeleteModal() {
+            document.getElementById('delete-modal').classList.remove('show');
+            rowToDelete = null;
+        }
+        function confirmDeleteRow() {
+            if (rowToDelete) {
+                rowToDelete.remove();
+                updateTotal();
+                closeDeleteModal();
+            }
+        }
+
+        // --- Chart Logic ---
+        function toggleChart() {
+            document.getElementById('chart-section').classList.toggle('show');
+        }
+
+        function updateCharts() {
+            var catTotals = {};
+            var payerTotals = {};
+            var grandTotal = 0;
+
+            categories.forEach(function (c) { catTotals[c.id] = 0; });
+            sources.forEach(function (s) { payerTotals[s] = 0; });
+
+            var rows = document.querySelectorAll('#table-body tr');
+            rows.forEach(function (row) {
+                var catSelect = row.querySelector('.category-select');
+                var payerSelect = row.querySelector('.payer-select');
+                var resultInput = row.querySelector('.twd-result');
+
+                var cat = catSelect ? catSelect.value : null;
+                var payer = payerSelect ? payerSelect.value : null;
+                var val = resultInput ? (parseFloat(resultInput.dataset.value) || 0) : 0;
+
+                if (cat && payer) {
+                    if (catTotals[cat] !== undefined) catTotals[cat] += val;
+                    if (payerTotals[payer] === undefined) payerTotals[payer] = 0;
+                    payerTotals[payer] += val;
+                    grandTotal += val;
+                }
+            });
+
+            renderPieChart('pie-chart-cat', 'legend-cat', catTotals, grandTotal, categories);
+
+            var payerObjs = sources.map(function (id) {
+                var p = payers.find(function (item) { return item.id === id; });
+                return { id: id, name: id, color: p ? p.color : '#999' };
+            });
+            renderPieChart('pie-chart-payer', 'legend-payer', payerTotals, grandTotal, payerObjs);
+        }
+
+        function renderPieChart(chartId, legendId, dataMap, total, configArr) {
+            var gradientStr = '';
+            var currentDeg = 0;
+            var legendEl = document.getElementById(legendId);
+            legendEl.innerHTML = '';
+
+            var sorted = [].concat(configArr).sort(function (a, b) {
+                return (dataMap[b.id] || 0) - (dataMap[a.id] || 0);
+            });
+
+            sorted.forEach(function (item) {
+                var amount = dataMap[item.id] || 0;
+                if (amount > 0) {
+                    var degSpan = (amount / total) * 360;
+                    var endDeg = currentDeg + degSpan;
+                    gradientStr += item.color + ' ' + currentDeg + 'deg ' + endDeg + 'deg, ';
+                    currentDeg = endDeg;
+
+                    legendEl.innerHTML +=
+                        '<div class="legend-item">' +
+                        '<div class="legend-color" style="background:' + item.color + '"></div>' +
+                        '<div style="flex:1; display:flex; justify-content:space-between;">' +
+                        '<span>' + item.name + '</span>' +
+                        '<b>$' + amount.toLocaleString() + '</b>' +
+                        '</div>' +
+                        '</div>';
+                }
+            });
+
+            var chartEl = document.getElementById(chartId);
+            if (total === 0 || gradientStr === '') {
+                gradientStr = '#eee 0deg 360deg';
+                legendEl.innerHTML = '<div style="text-align:center; width:100%; color:#999; font-size:0.8rem;">無資料</div>';
+            } else {
+                gradientStr = gradientStr.slice(0, -2);
+            }
+            chartEl.style.background = 'conic-gradient(' + gradientStr + ')';
+        }
+
+        // --- Core Functions ---
+
+        function saveData(isManual) {
+            if (isLoading) return; // Prevent saving while loading logic runs
+
+            try {
+                // Save Rates
+                var rates = {
+                    nzd: document.getElementById('rate-nzd').value,
+                    usd: document.getElementById('rate-usd').value,
+                    hkd: document.getElementById('rate-hkd').value
+                };
+                localStorage.setItem(STORAGE_KEY_RATES, JSON.stringify(rates));
+
+                // Save Rows
+                var rows = document.querySelectorAll('#table-body tr');
+                var data = [];
+
+                rows.forEach(function (row) {
+                    var dateEl = row.querySelector('.date-input');
+                    var sourceEl = row.querySelector('.payer-select');
+                    var catEl = row.querySelector('.category-select');
+                    var amtEl = row.querySelector('.amount-input');
+                    var currEl = row.querySelector('.currency-select');
+                    var noteEl = row.querySelector('.note-input');
+
+                    var dateVal = dateEl ? dateEl.value : '';
+                    var sourceVal = sourceEl ? sourceEl.value : sources[0];
+                    var catVal = catEl ? catEl.value : categories[0].id;
+                    var amtVal = amtEl ? amtEl.value : '';
+                    var currVal = currEl ? currEl.value : 'TWD';
+                    var noteVal = noteEl ? noteEl.value : '';
+
+                    // Save if date OR amount is present
+                    if (dateVal || amtVal) {
+                        data.push({
+                            date: dateVal,
+                            source: sourceVal,
+                            category: catVal,
+                            amount: amtVal,
+                            currency: currVal,
+                            note: noteVal
+                        });
+                    }
+                });
+
+                localStorage.setItem(STORAGE_KEY_EXPENSES, JSON.stringify(data));
+
+                if (isManual) {
+                    alert('✅ 資料已成功儲存！');
+                }
+            } catch (e) {
+                console.error("Save failed:", e);
+                if (isManual) {
+                    alert('⚠️ 儲存失敗，請檢查瀏覽器設定 (LocalStorage)');
+                }
+            }
+        }
+
+        function loadData() {
+            isLoading = true; // LOCK SAVING
+
+            try {
+                var savedRates = localStorage.getItem(STORAGE_KEY_RATES);
+                if (savedRates) {
+                    var rates = JSON.parse(savedRates);
+                    if (rates.nzd) document.getElementById('rate-nzd').value = rates.nzd;
+                    if (rates.usd) document.getElementById('rate-usd').value = rates.usd;
+                    if (rates.hkd) document.getElementById('rate-hkd').value = rates.hkd;
+                }
+
+                var savedExpenses = localStorage.getItem(STORAGE_KEY_EXPENSES);
+                var dataToLoad;
+
+                if (savedExpenses) {
+                    dataToLoad = JSON.parse(savedExpenses);
+                } else {
+                    dataToLoad = initialData;
+                }
+
+                // Sort by Date Descending
+                dataToLoad.sort(function (a, b) { return new Date(b.date) - new Date(a.date); });
+
+                var tbody = document.getElementById('table-body');
+                tbody.innerHTML = '';
+                dataToLoad.forEach(function (data) {
+                    createRow(data, false);
+                });
+
+            } catch (e) {
+                console.error("Load failed:", e);
+                // Fallback
+                var tbody = document.getElementById('table-body');
+                if (tbody.children.length === 0) {
+                    initialData.forEach(function (data) { createRow(data, false); });
+                }
+            } finally {
+                isLoading = false; // UNLOCK SAVING
+                updateTotal(); // Calc total and save once
+            }
+        }
+
+        function addNewRow() {
+            createRow({}, true);
+            recalculateAll();
+        }
+
+        function createRow(data, prepend) {
+            if (typeof prepend === 'undefined') prepend = false;
+            if (typeof data === 'undefined') data = {};
+
+            var tbody = document.getElementById('table-body');
+            var tr = document.createElement('tr');
+
+            var dateVal = data.date || new Date().toISOString().split('T')[0];
+            var sourceVal = data.source || sources[0];
+            var catVal = data.category || categories[0].id;
+            var amountVal = data.amount || '';
+            var currVal = data.currency || 'TWD';
+            var noteVal = data.note || '';
+
+            var getOptions = function (list, selectedVal) {
+                return list.map(function (item) {
+                    return '<option value="' + item + '" ' + (item === selectedVal ? 'selected' : '') + '>' + item + '</option>';
+                }).join('');
+            };
+
+            var getCatOptions = function (list, selectedVal) {
+                return list.map(function (c) {
+                    return '<option value="' + c.id + '" ' + (c.id === selectedVal ? 'selected' : '') + '>' + c.name + '</option>';
+                }).join('');
+            };
+
+            var currentColor = '#ccc';
+            var foundCat = categories.find(function (c) { return c.id === catVal; });
+            if (foundCat) currentColor = foundCat.color;
+
+            tr.innerHTML =
+                '<td data-label="日期"><input type="date" class="sheet-input date-input" value="' + dateVal + '" onchange="recalculateAll()"></td>' +
+                '<td data-label="付款人">' +
+                '<select class="sheet-input payer-select" onchange="recalculateAll()">' +
+                getOptions(sources, sourceVal) +
+                '</select>' +
+                '</td>' +
+                '<td data-label="類別">' +
+                '<div class="category-cell-wrapper">' +
+                '<div class="category-indicator" style="background-color: ' + currentColor + '"></div>' +
+                '<select class="sheet-input category-select" onchange="handleCategoryChange(this); recalculateAll()">' +
+                getCatOptions(categories, catVal) +
+                '</select>' +
+                '</div>' +
+                '</td>' +
+                '<td data-label="金額"><input type="number" class="sheet-input amount-input" value="' + amountVal + '" placeholder="0" min="0" inputmode="decimal" oninput="calculateRow(this)"></td>' +
+                '<td data-label="幣別">' +
+                '<select class="sheet-input currency-select" onchange="calculateRow(this)">' +
+                getOptions(currencies, currVal) +
+                '</select>' +
+                '</td>' +
+                '<td data-label="備註"><input type="text" class="sheet-input note-input" value="' + noteVal + '" placeholder="備註..." oninput="recalculateAll()"></td>' +
+                '<td data-label="台幣總額"><input type="text" class="sheet-input twd-result" readonly value="0"></td>' +
+                '<td data-label="操作" style="text-align:center;">' +
+                '<button class="btn-delete" onclick="deleteRow(this)"></button>' +
+                '</td>';
+
+            if (prepend) {
+                tbody.prepend(tr);
+            } else {
+                tbody.appendChild(tr);
+            }
+
+            calculateRow(tr.querySelector('.amount-input'));
+        }
+
+        function handleCategoryChange(selectElement) {
+            var row = selectElement.closest('tr');
+            var selectedId = selectElement.value;
+            var catData = categories.find(function (c) { return c.id === selectedId; });
+            var indicator = row.querySelector('.category-indicator');
+            if (catData && indicator) {
+                indicator.style.backgroundColor = catData.color;
+            }
+        }
+
+        function calculateRow(element) {
+            var row = element.closest('tr');
+            if (!row) return;
+
+            var amountInput = row.querySelector('.amount-input');
+            var currencySelect = row.querySelector('.currency-select');
+            var resultInput = row.querySelector('.twd-result');
+
+            var amount = parseFloat(amountInput.value) || 0;
+            var currency = currencySelect.value;
+            var rate = 1;
+
+            if (currency !== 'TWD') {
+                var rateInput = document.getElementById('rate-' + currency.toLowerCase());
+                if (rateInput) {
+                    rate = parseFloat(rateInput.value) || 0;
+                }
+            }
+
+            var twdTotal = Math.round(amount * rate);
+            resultInput.value = twdTotal.toLocaleString();
+            resultInput.dataset.value = twdTotal;
+
+            updateTotal();
+        }
+
+        function recalculateAll() {
+            var rows = document.querySelectorAll('#table-body tr');
+            rows.forEach(function (row) {
+                var amountInput = row.querySelector('.amount-input');
+                if (amountInput) calculateRow(amountInput);
+            });
+            updateTotal();
+        }
+
+        function updateTotal() {
+            var resultInputs = document.querySelectorAll('.twd-result');
+            var grandTotal = 0;
+            resultInputs.forEach(function (input) {
+                grandTotal += parseFloat(input.dataset.value) || 0;
+            });
+
+            document.getElementById('grand-total').textContent = '總花費: NT$' + grandTotal.toLocaleString();
+
+            // Only save if NOT loading
+            if (!isLoading) {
+                saveData(false);
+            }
+            updateCharts();
+        }
+    </script>
+</body>
+
+</html>
