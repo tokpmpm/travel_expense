@@ -758,6 +758,11 @@
                         <button class="btn-sync" id="btn-enable-sync" onclick="enableSync()">🌐 開啟雲端同步</button>
                         <button class="btn-sync" id="btn-copy-sync" style="display:none;" onclick="copySyncLink()">🔗
                             複製同步連結</button>
+                        <button class="btn-sync" id="btn-refresh" style="display:none;" onclick="cloudLoad(true)">🔄
+                            手動更新</button>
+                    </div>
+                    <div id="last-sync-time"
+                        style="font-size: 0.7rem; color: rgba(255,255,255,0.6); margin-top: 4px; text-align: center;">
                     </div>
                 </div>
             </div>
@@ -1009,12 +1014,14 @@
                     // Save if date OR amount is present
                     if (dateVal || amtVal) {
                         data.push({
+                            id: row.dataset.id || ('id-' + Date.now() + '-' + Math.floor(Math.random() * 1000)),
                             date: dateVal,
                             source: sourceVal,
                             category: catVal,
                             amount: amtVal,
                             currency: currVal,
-                            note: noteVal
+                            note: noteVal,
+                            lastModified: row.dataset.modified || Date.now()
                         });
                     }
                 });
@@ -1093,6 +1100,11 @@
             var amountVal = data.amount || '';
             var currVal = data.currency || 'TWD';
             var noteVal = data.note || '';
+            var rowId = data.id || ('id-' + Date.now() + '-' + Math.floor(Math.random() * 1000));
+            var rowModified = data.lastModified || Date.now();
+
+            tr.dataset.id = rowId;
+            tr.dataset.modified = rowModified;
 
             var getOptions = function (list, selectedVal) {
                 return list.map(function (item) {
@@ -1125,13 +1137,13 @@
                 '</select>' +
                 '</div>' +
                 '</td>' +
-                '<td data-label="金額"><input type="number" class="sheet-input amount-input" value="' + amountVal + '" placeholder="0" min="0" inputmode="decimal" oninput="calculateRow(this)"></td>' +
+                '<td data-label="金額"><input type="number" class="sheet-input amount-input" value="' + amountVal + '" placeholder="0" min="0" inputmode="decimal" oninput="markModified(this); calculateRow(this)"></td>' +
                 '<td data-label="幣別">' +
-                '<select class="sheet-input currency-select" onchange="calculateRow(this)">' +
+                '<select class="sheet-input currency-select" onchange="markModified(this); calculateRow(this)">' +
                 getOptions(currencies, currVal) +
                 '</select>' +
                 '</td>' +
-                '<td data-label="備註"><input type="text" class="sheet-input note-input" value="' + noteVal + '" placeholder="備註..." oninput="recalculateAll()"></td>' +
+                '<td data-label="備註"><input type="text" class="sheet-input note-input" value="' + noteVal + '" placeholder="備註..." oninput="markModified(this); recalculateAll()"></td>' +
                 '<td data-label="台幣總額"><input type="text" class="sheet-input twd-result" readonly value="0"></td>' +
                 '<td data-label="操作" style="text-align:center;">' +
                 '<button class="btn-delete" onclick="deleteRow(this)"></button>' +
@@ -1229,10 +1241,18 @@
             }
         }
 
+        function markModified(element) {
+            var row = element.closest('tr');
+            if (row) {
+                row.dataset.modified = Date.now();
+            }
+        }
+
         function initSyncUI() {
             if (!SYNC_ROOM_ID) return;
             document.getElementById('btn-enable-sync').style.display = 'none';
             document.getElementById('btn-copy-sync').style.display = 'inline-block';
+            document.getElementById('btn-refresh').style.display = 'inline-block';
             document.getElementById('sync-dot').classList.add('online');
             document.getElementById('sync-text').innerHTML = '正在與同步房 <span class="room-id-display">' + SYNC_ROOM_ID + '</span> 同步中';
         }
@@ -1267,12 +1287,14 @@
                 var n = row.querySelector('.note-input');
                 if (d || a) {
                     expenses.push({
+                        id: row.dataset.id,
                         date: d ? d.value : '',
                         source: s ? s.value : '',
                         category: c ? c.value : '',
                         amount: a ? a.value : '',
                         currency: cr ? cr.value : '',
-                        note: n ? n.value : ''
+                        note: n ? n.value : '',
+                        lastModified: row.dataset.modified || Date.now()
                     });
                 }
             });
@@ -1290,7 +1312,7 @@
             });
         }
 
-        function cloudLoad() {
+        function cloudLoad(isManual) {
             if (!SYNC_ROOM_ID || isLoading) return;
 
             var syncDot = document.getElementById('sync-dot');
@@ -1304,44 +1326,81 @@
                 .then(function (data) {
                     if (data && data.expenses) {
                         applyCloudData(data);
+                        if (isManual) alert('✅ 雲端資料更新完成！');
                     }
                     syncDot.classList.remove('syncing');
+                    var now = new Date();
+                    document.getElementById('last-sync-time').textContent = '最後同步: ' + now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
                 })
                 .catch(function (err) {
-                    // It's fine if the room doesn't exist yet
                     syncDot.classList.remove('syncing');
                 });
         }
 
         function applyCloudData(data) {
-            // Simple check: only apply if data is different or newer
-            // For now, simple overwrite to ensure everyone sees the same
             isLoading = true;
+
+            // 匯率更新
             if (data.rates) {
                 if (data.rates.nzd) document.getElementById('rate-nzd').value = data.rates.nzd;
                 if (data.rates.usd) document.getElementById('rate-usd').value = data.rates.usd;
                 if (data.rates.hkd) document.getElementById('rate-hkd').value = data.rates.hkd;
             }
 
-            if (data.expenses) {
-                var tbody = document.getElementById('table-body');
-                tbody.innerHTML = '';
-                data.expenses.forEach(function (exp) {
-                    createRow(exp, false);
-                });
-            }
-            isLoading = false;
-            // Don't call cloudSave here to avoid loops
-            saveData(false); // Save to local storage
-            updateCharts();
-
-            // Re-update total display
-            var resultInputs = document.querySelectorAll('.twd-result');
-            var grandTotal = 0;
-            resultInputs.forEach(function (input) {
-                grandTotal += parseFloat(input.dataset.value) || 0;
+            // 讀取本地目前的資料以供合併
+            var rows = document.querySelectorAll('#table-body tr');
+            var localMap = {};
+            rows.forEach(function (row) {
+                if (row.dataset.id) {
+                    localMap[row.dataset.id] = row;
+                }
             });
-            document.getElementById('grand-total').textContent = '總花費: NT$' + grandTotal.toLocaleString();
+
+            var remoteExpenses = data.expenses || [];
+
+            // 合併策略：
+            remoteExpenses.forEach(function (remoteExp) {
+                var localRow = localMap[remoteExp.id];
+                if (!localRow) {
+                    // 本地沒有，新增一列
+                    createRow(remoteExp, false);
+                } else {
+                    // 兩邊都有，檢查時間戳
+                    var remoteMod = remoteExp.lastModified || 0;
+                    var localMod = parseInt(localRow.dataset.modified) || 0;
+
+                    if (remoteMod > localMod) {
+                        // 遠端比較新，更新本地這一列
+                        updateRowContent(localRow, remoteExp);
+                    }
+                }
+            });
+
+            isLoading = false;
+            saveData(false);
+            updateCharts();
+            recalculateAll(); // 確保總額正確
+        }
+
+        function updateRowContent(row, data) {
+            var d = row.querySelector('.date-input');
+            var s = row.querySelector('.payer-select');
+            var c = row.querySelector('.category-select');
+            var a = row.querySelector('.amount-input');
+            var cr = row.querySelector('.currency-select');
+            var n = row.querySelector('.note-input');
+
+            if (d) d.value = data.date || '';
+            if (s) s.value = data.source || '';
+            if (c) {
+                c.value = data.category || '';
+                handleCategoryChange(c);
+            }
+            if (a) a.value = data.amount || '';
+            if (cr) cr.value = data.currency || '';
+            if (n) n.value = data.note || '';
+
+            row.dataset.modified = data.lastModified || Date.now();
         }
 
         // Auto-check for room on load
