@@ -750,6 +750,7 @@
             }
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
 <body>
@@ -1269,9 +1270,18 @@
             updateCharts();
         }
 
-        // --- 雲端同步邏輯 (KVDB.io) ---
+        // --- 雲端同步邏輯 (Supabase) ---
+        var SUPABASE_URL = 'https://xmkhqqzieelwyrlxmpol.supabase.co';
+        var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhta2hxcXppZWVsd3lybHhtcG9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0ODM2NzIsImV4cCI6MjA4MjA1OTY3Mn0.sZ4bxFhpZSylYTXQ69WGl85P_Ly8pt-v0bfeSBNRpJA';
+        var supabase = null;
         var SYNC_ROOM_ID = '';
-        var KVDB_PREFIX = 'https://kvdb.io/PMT8dLKz6vWCUxBFpX9ynA/'; // 新穩定 Bucket
+        var realtimeChannel = null;
+
+        function initSupabase() {
+            if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            }
+        }
 
         function getRoomFromURL() {
             var params = new URLSearchParams(window.location.search);
@@ -1287,9 +1297,9 @@
                 window.history.replaceState({ path: newUrl }, '', newUrl);
                 initSyncUI();
                 cloudSave();
+                subscribeToChanges();
             }
         }
-
 
         function initSyncUI() {
             if (!SYNC_ROOM_ID) return;
@@ -1297,7 +1307,7 @@
             document.getElementById('btn-copy-sync').style.display = 'inline-block';
             document.getElementById('btn-refresh').style.display = 'inline-block';
             document.getElementById('sync-dot').classList.add('online');
-            document.getElementById('sync-text').innerHTML = '正在與同步房 <span class="room-id-display">' + SYNC_ROOM_ID + '</span> 同步中';
+            document.getElementById('sync-text').innerHTML = '正在與同步房 <span class="room-id-display">' + SYNC_ROOM_ID + '</span> 同步中 (Supabase)';
         }
 
         function copySyncLink() {
@@ -1307,106 +1317,108 @@
             });
         }
 
-        function cloudSave(isManual) {
-            if (!SYNC_ROOM_ID || isLoading) return;
+        function subscribeToChanges() {
+            if (!supabase || !SYNC_ROOM_ID) return;
+
+            realtimeChannel = supabase
+                .channel('room-' + SYNC_ROOM_ID)
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: 'expenses',
+                    filter: 'room=eq.' + SYNC_ROOM_ID
+                }, function (payload) {
+                    console.log('Realtime update received:', payload);
+                    cloudLoad(false);
+                })
+                .subscribe();
+        }
+
+        async function cloudSave(isManual) {
+            if (!SYNC_ROOM_ID || isLoading || !supabase) return;
 
             var syncDot = document.getElementById('sync-dot');
             syncDot.classList.add('syncing');
 
-            // --- Read-Modify-Write System ---
-            // 1. Fetch current cloud data first
-            fetch(KVDB_PREFIX + SYNC_ROOM_ID)
-                .then(function (res) { return res.ok ? res.json() : { expenses: [] }; })
-                .then(function (remoteData) {
-                    // 2. Merge local into remote
-                    var mergedData = mergeForPush(remoteData);
+            try {
+                var rates = {
+                    nzd: document.getElementById('rate-nzd').value,
+                    usd: document.getElementById('rate-usd').value,
+                    hkd: document.getElementById('rate-hkd').value
+                };
 
-                    // 3. Push merged back to cloud
-                    return fetch(KVDB_PREFIX + SYNC_ROOM_ID, {
-                        method: 'POST',
-                        body: JSON.stringify(mergedData)
-                    });
-                })
-                .then(function () {
-                    setTimeout(function () { syncDot.classList.remove('syncing'); }, 500);
-                    // Clear all dirty states
-                    document.querySelectorAll('.btn-save.dirty').forEach(function (b) { b.classList.remove('dirty'); });
-                    if (isManual) alert('✅ 雲端同步成功！數據已安全合併。');
-                })
-                .catch(function (err) {
-                    console.error('Cloud save failed:', err);
-                    syncDot.classList.remove('syncing');
-                    if (isManual) alert('❌ 同步失敗，請檢查網路連線。');
-                });
-        }
-
-        function mergeForPush(remoteData) {
-            var rates = {
-                nzd: document.getElementById('rate-nzd').value,
-                usd: document.getElementById('rate-usd').value,
-                hkd: document.getElementById('rate-hkd').value
-            };
-
-            var localRows = document.querySelectorAll('#table-body tr');
-            var localExpenses = [];
-            localRows.forEach(function (row) {
-                var d = row.querySelector('.date-input');
-                var a = row.querySelector('.amount-input');
-                if (d || a) {
-                    localExpenses.push({
-                        id: row.dataset.id,
-                        date: d ? d.value : '',
-                        source: row.querySelector('.payer-select').value,
-                        category: row.querySelector('.category-select').value,
-                        amount: a ? a.value : '',
-                        currency: row.querySelector('.currency-select').value,
-                        note: row.querySelector('.note-input').value,
-                        lastModified: parseInt(row.dataset.modified) || Date.now()
-                    });
-                }
-            });
-
-            var remoteExpenses = remoteData.expenses || [];
-            var finalExpenses = [].concat(remoteExpenses);
-
-            localExpenses.forEach(function (local) {
-                var idx = finalExpenses.findIndex(function (r) { return r.id === local.id; });
-                if (idx === -1) {
-                    finalExpenses.push(local);
-                } else {
-                    // Only update if local is newer than what we just fetched
-                    if (local.lastModified > (finalExpenses[idx].lastModified || 0)) {
-                        finalExpenses[idx] = local;
+                var localRows = document.querySelectorAll('#table-body tr');
+                var expenses = [];
+                localRows.forEach(function (row) {
+                    var d = row.querySelector('.date-input');
+                    var a = row.querySelector('.amount-input');
+                    if (d || a) {
+                        expenses.push({
+                            id: row.dataset.id,
+                            date: d ? d.value : '',
+                            source: row.querySelector('.payer-select').value,
+                            category: row.querySelector('.category-select').value,
+                            amount: a ? a.value : '',
+                            currency: row.querySelector('.currency-select').value,
+                            note: row.querySelector('.note-input').value,
+                            lastModified: parseInt(row.dataset.modified) || Date.now()
+                        });
                     }
-                }
-            });
+                });
 
-            return { rates: rates, expenses: finalExpenses, timestamp: Date.now() };
+                var payload = {
+                    room: SYNC_ROOM_ID,
+                    data: { rates: rates, expenses: expenses },
+                    updated_at: new Date().toISOString()
+                };
+
+                var { error } = await supabase
+                    .from('expenses')
+                    .upsert(payload, { onConflict: 'room' });
+
+                if (error) throw error;
+
+                setTimeout(function () { syncDot.classList.remove('syncing'); }, 500);
+                document.querySelectorAll('.btn-save.dirty').forEach(function (b) { b.classList.remove('dirty'); });
+
+                var now = new Date();
+                document.getElementById('last-sync-time').textContent = '最後同步: ' + now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
+
+                if (isManual) alert('✅ 雲端同步成功！');
+            } catch (err) {
+                console.error('Cloud save failed:', err);
+                syncDot.classList.remove('syncing');
+                if (isManual) alert('❌ 同步失敗: ' + (err.message || '請檢查網路連線'));
+            }
         }
 
-        function cloudLoad(isManual) {
-            if (!SYNC_ROOM_ID || isLoading) return;
+        async function cloudLoad(isManual) {
+            if (!SYNC_ROOM_ID || isLoading || !supabase) return;
 
             var syncDot = document.getElementById('sync-dot');
             syncDot.classList.add('syncing');
 
-            fetch(KVDB_PREFIX + SYNC_ROOM_ID)
-                .then(function (res) {
-                    if (!res.ok) throw new Error('Not found');
-                    return res.json();
-                })
-                .then(function (data) {
-                    if (data && data.expenses) {
-                        applyCloudData(data);
-                        if (isManual) alert('✅ 已從雲端更新最新數據。');
-                    }
-                    syncDot.classList.remove('syncing');
-                    var now = new Date();
-                    document.getElementById('last-sync-time').textContent = '最後同步: ' + now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
-                })
-                .catch(function (err) {
-                    syncDot.classList.remove('syncing');
-                });
+            try {
+                var { data, error } = await supabase
+                    .from('expenses')
+                    .select('data')
+                    .eq('room', SYNC_ROOM_ID)
+                    .single();
+
+                if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
+
+                if (data && data.data) {
+                    applyCloudData(data.data);
+                    if (isManual) alert('✅ 已從雲端更新最新數據。');
+                }
+
+                syncDot.classList.remove('syncing');
+                var now = new Date();
+                document.getElementById('last-sync-time').textContent = '最後同步: ' + now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
+            } catch (err) {
+                console.error('Cloud load failed:', err);
+                syncDot.classList.remove('syncing');
+            }
         }
 
         function applyCloudData(data) {
@@ -1434,7 +1446,7 @@
                     var localRow = localMap[localId];
                     var isDirty = localRow.querySelector('.btn-save.dirty') !== null;
                     if (!isDirty) {
-                        localRow.remove(); // 從畫面移除
+                        localRow.remove();
                     }
                 }
             });
@@ -1485,20 +1497,22 @@
 
         // Auto-check for room on load
         window.addEventListener('load', function () {
+            initSupabase();
             var room = getRoomFromURL();
             if (room) {
                 SYNC_ROOM_ID = room;
                 initSyncUI();
                 cloudLoad();
+                subscribeToChanges();
             }
         });
 
-        // Periodic Cloud Sync
+        // Periodic Cloud Sync (fallback)
         setInterval(function () {
             if (SYNC_ROOM_ID && !document.hidden && !isLoading) {
                 cloudLoad();
             }
-        }, 15000); // 每 15 秒同步一次
+        }, 30000); // 每 30 秒同步一次 (Realtime 會更快)
     </script>
 </body>
 
