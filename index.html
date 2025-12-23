@@ -883,14 +883,14 @@
         var sources = payers.map(function (p) { return p.id; });
 
         var initialData = [
-            { date: '2025-12-25', source: 'W', category: 'flight', amount: 61000, currency: 'TWD', note: 'flight to NZ' },
-            { date: '2025-12-27', source: 'W', category: 'activity', amount: 5000, currency: 'USD', note: 'local tour' },
-            { date: '2025-12-25', source: 'W', category: 'insurance', amount: 234, currency: 'NZD', note: 'VISA' },
-            { date: '2025-12-25', source: 'W', category: 'insurance', amount: 1136, currency: 'TWD', note: 'INSURANCE' },
-            { date: '2025-12-25', source: 'W', category: 'insurance', amount: 62, currency: 'USD', note: 'INSURANCE' },
-            { date: '2025-12-25', source: 'W', category: 'flight', amount: 118, currency: 'USD', note: 'flight NZ to TPE tax' },
-            { date: '2025-12-26', source: 'W', category: 'stay', amount: 3265, currency: 'TWD', note: 'sudima CHC airport' },
-            { date: '2025-01-03', source: 'W', category: 'stay', amount: 300, currency: 'NZD', note: 'CHC hotels 1/3-1/5' }
+            { id: 'init-1', date: '2025-12-25', source: 'W', category: 'flight', amount: 61000, currency: 'TWD', note: 'flight to NZ' },
+            { id: 'init-2', date: '2025-12-27', source: 'W', category: 'activity', amount: 5000, currency: 'USD', note: 'local tour' },
+            { id: 'init-3', date: '2025-12-25', source: 'W', category: 'insurance', amount: 234, currency: 'NZD', note: 'VISA' },
+            { id: 'init-4', date: '2025-12-25', source: 'W', category: 'insurance', amount: 1136, currency: 'TWD', note: 'INSURANCE' },
+            { id: 'init-5', date: '2025-12-25', source: 'W', category: 'insurance', amount: 62, currency: 'USD', note: 'INSURANCE' },
+            { id: 'init-6', date: '2025-12-25', source: 'W', category: 'flight', amount: 118, currency: 'USD', note: 'flight NZ to TPE tax' },
+            { id: 'init-7', date: '2025-12-26', source: 'W', category: 'stay', amount: 3265, currency: 'TWD', note: 'sudima CHC airport' },
+            { id: 'init-8', date: '2025-01-03', source: 'W', category: 'stay', amount: 300, currency: 'NZD', note: 'CHC hotels 1/3-1/5' }
         ];
 
         // --- Init ---
@@ -1271,7 +1271,7 @@
 
         // --- 雲端同步邏輯 (KVDB.io) ---
         var SYNC_ROOM_ID = '';
-        var KVDB_PREFIX = 'https://kvdb.io/C59XzUqgXy9LidFm7QyUHz/'; // 公共 Bucket
+        var KVDB_PREFIX = 'https://kvdb.io/PMT8dLKz6vWCUxBFpX9ynA/'; // 新穩定 Bucket
 
         function getRoomFromURL() {
             var params = new URLSearchParams(window.location.search);
@@ -1290,26 +1290,6 @@
             }
         }
 
-        // --- 雲端同步邏輯 (KVDB.io) ---
-        var SYNC_ROOM_ID = '';
-        var KVDB_PREFIX = 'https://kvdb.io/C59XzUqgXy9LidFm7QyUHz/'; // 公共 Bucket
-
-        function getRoomFromURL() {
-            var params = new URLSearchParams(window.location.search);
-            return params.get('room');
-        }
-
-        function enableSync() {
-            if (SYNC_ROOM_ID) return;
-            var room = prompt("請輸入同步房號 (例如: MyTrip2025):", "Trip" + Math.floor(Math.random() * 9000 + 1000));
-            if (room) {
-                SYNC_ROOM_ID = room;
-                var newUrl = window.location.origin + window.location.pathname + '?room=' + encodeURIComponent(SYNC_ROOM_ID);
-                window.history.replaceState({ path: newUrl }, '', newUrl);
-                initSyncUI();
-                cloudSave();
-            }
-        }
 
         function initSyncUI() {
             if (!SYNC_ROOM_ID) return;
@@ -1446,7 +1426,20 @@
             });
 
             var remoteExpenses = data.expenses || [];
+            var remoteIds = remoteExpenses.map(function (e) { return e.id; });
 
+            // Mirror Sync: 刪除雲端沒有、且本地「非 Dirty」的行
+            Object.keys(localMap).forEach(function (localId) {
+                if (remoteIds.indexOf(localId) === -1) {
+                    var localRow = localMap[localId];
+                    var isDirty = localRow.querySelector('.btn-save.dirty') !== null;
+                    if (!isDirty) {
+                        localRow.remove(); // 從畫面移除
+                    }
+                }
+            });
+
+            // 更新/新增遠端的資料
             remoteExpenses.forEach(function (remoteExp) {
                 var localRow = localMap[remoteExp.id];
                 if (!localRow) {
@@ -1454,7 +1447,6 @@
                 } else {
                     var localMod = parseInt(localRow.dataset.modified) || 0;
                     var remoteMod = remoteExp.lastModified || 0;
-                    // Only overwrite if remote is strictly newer and local is NOT dirty
                     var isDirty = localRow.querySelector('.btn-save.dirty') !== null;
                     if (remoteMod > localMod && !isDirty) {
                         updateRowContent(localRow, remoteExp);
@@ -1465,7 +1457,7 @@
             isLoading = false;
             saveData(false);
             updateCharts();
-            recalculateAll(); // Ensure total display is correct
+            recalculateAll();
         }
 
         function updateRowContent(row, data) {
