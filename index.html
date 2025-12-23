@@ -1199,16 +1199,16 @@
             if (foundCat) currentColor = foundCat.color;
 
             tr.innerHTML =
-                '<td data-label="日期"><input type="date" class="sheet-input date-input" value="' + dateVal + '" onchange="recalculateAll()"></td>' +
+                '<td data-label="日期"><input type="date" class="sheet-input date-input" value="' + dateVal + '" onchange="markModified(this); recalculateAll()"></td>' +
                 '<td data-label="付款人">' +
-                '<select class="sheet-input payer-select" onchange="recalculateAll()">' +
+                '<select class="sheet-input payer-select" onchange="markModified(this); recalculateAll()">' +
                 getOptions(sources, sourceVal) +
                 '</select>' +
                 '</td>' +
                 '<td data-label="類別">' +
                 '<div class="category-cell-wrapper">' +
                 '<div class="category-indicator" style="background-color: ' + currentColor + '"></div>' +
-                '<select class="sheet-input category-select" onchange="handleCategoryChange(this); recalculateAll()">' +
+                '<select class="sheet-input category-select" onchange="markModified(this); handleCategoryChange(this); recalculateAll()">' +
                 getCatOptions(categories, catVal) +
                 '</select>' +
                 '</div>' +
