@@ -929,6 +929,10 @@
                 rowToDelete.remove();
                 updateTotal();
                 closeDeleteModal();
+                // Sync deletion to cloud
+                if (SYNC_ROOM_ID) {
+                    cloudSave(false);
+                }
             }
         }
 
