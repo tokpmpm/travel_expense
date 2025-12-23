@@ -1453,11 +1453,22 @@
         function applyCloudData(data) {
             isLoading = true;
 
-            // 匯率更新
+            // 匯率更新 - 只在不是正在編輯時才更新
             if (data.rates) {
-                if (data.rates.nzd) document.getElementById('rate-nzd').value = data.rates.nzd;
-                if (data.rates.usd) document.getElementById('rate-usd').value = data.rates.usd;
-                if (data.rates.hkd) document.getElementById('rate-hkd').value = data.rates.hkd;
+                var nzdInput = document.getElementById('rate-nzd');
+                var usdInput = document.getElementById('rate-usd');
+                var hkdInput = document.getElementById('rate-hkd');
+
+                // Only update rate inputs that don't have focus (not being edited)
+                if (data.rates.nzd && nzdInput !== document.activeElement) {
+                    nzdInput.value = data.rates.nzd;
+                }
+                if (data.rates.usd && usdInput !== document.activeElement) {
+                    usdInput.value = data.rates.usd;
+                }
+                if (data.rates.hkd && hkdInput !== document.activeElement) {
+                    hkdInput.value = data.rates.hkd;
+                }
             }
 
             var localRows = document.querySelectorAll('#table-body tr');
