@@ -118,6 +118,89 @@
             background: rgba(255, 255, 255, 0.3);
         }
 
+        /* --- Sync Section --- */
+        .sync-panel {
+            background: rgba(0, 0, 0, 0.1);
+            padding: 10px;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+            margin-top: 10px;
+            border: 1px dashed rgba(255, 255, 255, 0.2);
+        }
+
+        .sync-status {
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            justify-content: center;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ccc;
+        }
+
+        .status-dot.online {
+            background: #4caf50;
+            box-shadow: 0 0 5px #4caf50;
+        }
+
+        .status-dot.syncing {
+            background: #ffeb3b;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 0.4;
+            }
+
+            50% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0.4;
+            }
+        }
+
+        .sync-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn-sync {
+            background: #fff;
+            color: #1f4e78;
+            border: none;
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn-sync:hover {
+            background: #f0f0f0;
+        }
+
+        .room-id-display {
+            font-family: monospace;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.85rem;
+        }
+
         /* Rates Grid */
         .rates-container {
             display: grid;
@@ -665,6 +748,18 @@
                         <input type="number" id="rate-hkd" value="4.06" step="0.01">
                     </div>
                 </div>
+
+                <div class="sync-panel" id="sync-panel">
+                    <div class="sync-status">
+                        <div class="status-dot" id="sync-dot"></div>
+                        <span id="sync-text">雲端同步已關閉</span>
+                    </div>
+                    <div class="sync-actions">
+                        <button class="btn-sync" id="btn-enable-sync" onclick="enableSync()">🌐 開啟雲端同步</button>
+                        <button class="btn-sync" id="btn-copy-sync" style="display:none;" onclick="copySyncLink()">🔗
+                            複製同步連結</button>
+                    </div>
+                </div>
             </div>
         </header>
 
@@ -1108,9 +1203,163 @@
             // Only save if NOT loading
             if (!isLoading) {
                 saveData(false);
+                cloudSave(); // 觸發雲端儲存
             }
             updateCharts();
         }
+
+        // --- 雲端同步邏輯 (KVDB.io) ---
+        var SYNC_ROOM_ID = '';
+        var KVDB_PREFIX = 'https://kvdb.io/C59XzUqgXy9LidFm7QyUHz/'; // 公共 Bucket
+
+        function getRoomFromURL() {
+            var params = new URLSearchParams(window.location.search);
+            return params.get('room');
+        }
+
+        function enableSync() {
+            if (SYNC_ROOM_ID) return;
+            var room = prompt("請輸入同步房號 (例如: MyTrip2025):", "Trip" + Math.floor(Math.random() * 9000 + 1000));
+            if (room) {
+                SYNC_ROOM_ID = room;
+                var newUrl = window.location.origin + window.location.pathname + '?room=' + encodeURIComponent(SYNC_ROOM_ID);
+                window.history.replaceState({ path: newUrl }, '', newUrl);
+                initSyncUI();
+                cloudSave();
+            }
+        }
+
+        function initSyncUI() {
+            if (!SYNC_ROOM_ID) return;
+            document.getElementById('btn-enable-sync').style.display = 'none';
+            document.getElementById('btn-copy-sync').style.display = 'inline-block';
+            document.getElementById('sync-dot').classList.add('online');
+            document.getElementById('sync-text').innerHTML = '正在與同步房 <span class="room-id-display">' + SYNC_ROOM_ID + '</span> 同步中';
+        }
+
+        function copySyncLink() {
+            var url = window.location.href;
+            navigator.clipboard.writeText(url).then(function () {
+                alert('✅ 同步連結已複製到剪貼簿！發給朋友即可同步。');
+            });
+        }
+
+        function cloudSave() {
+            if (!SYNC_ROOM_ID || isLoading) return;
+
+            var syncDot = document.getElementById('sync-dot');
+            syncDot.classList.add('syncing');
+
+            var rates = {
+                nzd: document.getElementById('rate-nzd').value,
+                usd: document.getElementById('rate-usd').value,
+                hkd: document.getElementById('rate-hkd').value
+            };
+
+            var rows = document.querySelectorAll('#table-body tr');
+            var expenses = [];
+            rows.forEach(function (row) {
+                var d = row.querySelector('.date-input');
+                var s = row.querySelector('.payer-select');
+                var c = row.querySelector('.category-select');
+                var a = row.querySelector('.amount-input');
+                var cr = row.querySelector('.currency-select');
+                var n = row.querySelector('.note-input');
+                if (d || a) {
+                    expenses.push({
+                        date: d ? d.value : '',
+                        source: s ? s.value : '',
+                        category: c ? c.value : '',
+                        amount: a ? a.value : '',
+                        currency: cr ? cr.value : '',
+                        note: n ? n.value : ''
+                    });
+                }
+            });
+
+            var payload = JSON.stringify({ rates: rates, expenses: expenses, timestamp: Date.now() });
+
+            fetch(KVDB_PREFIX + SYNC_ROOM_ID, {
+                method: 'POST',
+                body: payload
+            }).then(function () {
+                setTimeout(function () { syncDot.classList.remove('syncing'); }, 500);
+            }).catch(function (err) {
+                console.error('Cloud save failed:', err);
+                syncDot.classList.remove('syncing');
+            });
+        }
+
+        function cloudLoad() {
+            if (!SYNC_ROOM_ID || isLoading) return;
+
+            var syncDot = document.getElementById('sync-dot');
+            syncDot.classList.add('syncing');
+
+            fetch(KVDB_PREFIX + SYNC_ROOM_ID)
+                .then(function (res) {
+                    if (!res.ok) throw new Error('Not found');
+                    return res.json();
+                })
+                .then(function (data) {
+                    if (data && data.expenses) {
+                        applyCloudData(data);
+                    }
+                    syncDot.classList.remove('syncing');
+                })
+                .catch(function (err) {
+                    // It's fine if the room doesn't exist yet
+                    syncDot.classList.remove('syncing');
+                });
+        }
+
+        function applyCloudData(data) {
+            // Simple check: only apply if data is different or newer
+            // For now, simple overwrite to ensure everyone sees the same
+            isLoading = true;
+            if (data.rates) {
+                if (data.rates.nzd) document.getElementById('rate-nzd').value = data.rates.nzd;
+                if (data.rates.usd) document.getElementById('rate-usd').value = data.rates.usd;
+                if (data.rates.hkd) document.getElementById('rate-hkd').value = data.rates.hkd;
+            }
+
+            if (data.expenses) {
+                var tbody = document.getElementById('table-body');
+                tbody.innerHTML = '';
+                data.expenses.forEach(function (exp) {
+                    createRow(exp, false);
+                });
+            }
+            isLoading = false;
+            // Don't call cloudSave here to avoid loops
+            saveData(false); // Save to local storage
+            updateCharts();
+
+            // Re-update total display
+            var resultInputs = document.querySelectorAll('.twd-result');
+            var grandTotal = 0;
+            resultInputs.forEach(function (input) {
+                grandTotal += parseFloat(input.dataset.value) || 0;
+            });
+            document.getElementById('grand-total').textContent = '總花費: NT$' + grandTotal.toLocaleString();
+        }
+
+        // Auto-check for room on load
+        window.addEventListener('load', function () {
+            var room = getRoomFromURL();
+            if (room) {
+                SYNC_ROOM_ID = room;
+                initSyncUI();
+                cloudLoad();
+            }
+        });
+
+        // Periodic Cloud Sync
+        setInterval(function () {
+            if (SYNC_ROOM_ID && !document.hidden && !isLoading) {
+                cloudLoad();
+            }
+        }, 15000); // 每 15 秒同步一次
     </script>
 </body>
 
