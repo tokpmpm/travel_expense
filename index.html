@@ -1372,11 +1372,17 @@
                     updated_at: new Date().toISOString()
                 };
 
-                var { error } = await supabase
-                    .from('expenses')
-                    .upsert(payload, { onConflict: 'room' });
+                console.log('Attempting cloudSave with payload:', payload);
 
-                if (error) throw error;
+                var result = await supabase
+                    .from('expenses')
+                    .upsert(payload, { onConflict: 'room', ignoreDuplicates: false });
+
+                console.log('Supabase upsert result:', result);
+
+                if (result.error) {
+                    throw result.error;
+                }
 
                 setTimeout(function () { syncDot.classList.remove('syncing'); }, 500);
                 document.querySelectorAll('.btn-save.dirty').forEach(function (b) { b.classList.remove('dirty'); });
