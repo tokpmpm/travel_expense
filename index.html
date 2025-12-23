@@ -782,6 +782,10 @@
                     </div>
                 </div>
 
+                <div style="text-align: center; margin-top: 8px;">
+                    <button class="btn-save" id="btn-save-rates" onclick="syncRates()">✓</button>
+                </div>
+
                 <div class="sync-panel" id="sync-panel">
                     <div class="sync-status">
                         <div class="status-dot" id="sync-dot"></div>
@@ -791,8 +795,6 @@
                         <button class="btn-sync" id="btn-enable-sync" onclick="enableSync()">🌐 開啟雲端同步</button>
                         <button class="btn-sync" id="btn-copy-sync" style="display:none;" onclick="copySyncLink()">🔗
                             複製同步連結</button>
-                        <button class="btn-sync" id="btn-refresh" style="display:none;" onclick="cloudLoad(true)">🔄
-                            手動更新</button>
                     </div>
                     <div id="last-sync-time"
                         style="font-size: 0.7rem; color: rgba(255,255,255,0.6); margin-top: 4px; text-align: center;">
@@ -904,10 +906,47 @@
             loadData();
             var rateInputs = document.querySelectorAll('.rate-group input');
             rateInputs.forEach(function (input) {
-                input.addEventListener('input', recalculateAll);
+                input.addEventListener('input', function () {
+                    recalculateAll();
+                    saveRates(); // Save rates when changed
+                    markRatesDirty(); // Show confirm button
+                });
             });
             updateCharts();
         });
+
+        // Show confirm button for rates
+        function markRatesDirty() {
+            var btn = document.getElementById('btn-save-rates');
+            if (btn) btn.classList.add('dirty');
+        }
+
+        // Manual sync rates to cloud
+        function syncRates() {
+            if (!SYNC_ROOM_ID) {
+                alert('請先點擊上方的「開啟雲端同步」並選擇房號！');
+                return;
+            }
+            cloudSave(true);
+            var btn = document.getElementById('btn-save-rates');
+            if (btn) btn.classList.remove('dirty');
+        }
+
+        // Save exchange rates to localStorage only (no auto cloud sync)
+        function saveRates() {
+            if (isLoading) return;
+
+            try {
+                var rates = {
+                    nzd: document.getElementById('rate-nzd').value,
+                    usd: document.getElementById('rate-usd').value,
+                    hkd: document.getElementById('rate-hkd').value
+                };
+                localStorage.setItem(STORAGE_KEY_RATES, JSON.stringify(rates));
+            } catch (e) {
+                console.error("Save rates failed:", e);
+            }
+        }
 
         // --- Manual Save Function ---
         // function manualSave() {
@@ -1270,17 +1309,9 @@
 
             document.getElementById('grand-total').textContent = '總花費: NT$' + grandTotal.toLocaleString();
 
-            // Only save to localStorage automatically
+            // Only save to localStorage (no auto cloud sync)
             if (!isLoading) {
                 saveData(false);
-
-                // Auto-sync to cloud with debounce (2 second delay)
-                if (SYNC_ROOM_ID) {
-                    if (cloudSyncTimer) clearTimeout(cloudSyncTimer);
-                    cloudSyncTimer = setTimeout(function () {
-                        cloudSave(false);
-                    }, 2000);
-                }
             }
             updateCharts();
         }
@@ -1328,7 +1359,6 @@
             if (!SYNC_ROOM_ID) return;
             document.getElementById('btn-enable-sync').style.display = 'none';
             document.getElementById('btn-copy-sync').style.display = 'inline-block';
-            document.getElementById('btn-refresh').style.display = 'inline-block';
             document.getElementById('sync-dot').classList.add('online');
             document.getElementById('sync-text').innerHTML = '正在與同步房 <span class="room-id-display">' + SYNC_ROOM_ID + '</span> 同步中 (Supabase)';
         }
